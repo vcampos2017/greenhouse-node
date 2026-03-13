@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.csv
+.cache/
+.config/
+.ssh/
+.python_history
+venv/
+greenhouse-env/
+.env
+config_local.py
+secrets.py
