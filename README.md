@@ -10,6 +10,26 @@ This project is designed to be:
 	•	lightweight
 	•	easy to expand with additional sensors
 
+System architecture diagram
+
+Soil Sensor → ADS1115
+                     ↓
+BME280 → Raspberry Pi Zero 2W → Web Dashboard
+                         ↓
+                       CSV Log
+                         ↓
+                       Chatty
+                       
+                       
+Hardware wiring diagram
+
+Pi GPIO pins
+BME280 (I2C)
+ADS1115 (I2C)
+Soil sensor (A0)
+LCD (I2C)
+
+
 ⸻
 
 Features

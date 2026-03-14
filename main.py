@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import os
 import threading
 import time
+import socket
 from typing import Any
 
 from air_temperature import read_air_temperature_c, c_to_f
@@ -11,6 +11,7 @@ from soil_moisture import read_soil_metrics
 from metric_logger import append_metrics_csv
 from chatty_talker import post_to_chatty
 from web_posting import create_app
+from lcd_display import LCDDisplay
 
 
 # ---------- Configuration ----------
@@ -38,6 +39,18 @@ LATEST_METRICS: dict[str, Any] = {
     "soil_moisture_percent": None,
     "soil_moisture_band": None,
 }
+
+
+def get_local_ip() -> str:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+    except OSError:
+        ip = "127.0.0.1"
+    finally:
+        sock.close()
+    return ip
 
 
 def collect_metrics() -> dict[str, Any]:
@@ -77,31 +90,52 @@ def main() -> None:
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
+    lcd = LCDDisplay(address=0x27)
+    ip_address = get_local_ip()
+
+    lcd.show_message("Greenhouse Node", "Starting...", delay_seconds=2)
+    lcd.show_ip_address(ip_address, port=WEB_PORT, delay_seconds=4)
+
     loop_count = 0
 
-    while True:
-        metrics = collect_metrics()
-        LATEST_METRICS.update(metrics)
+    try:
+        while True:
+            metrics = collect_metrics()
+            LATEST_METRICS.update(metrics)
 
-        append_metrics_csv(CSV_LOG_PATH, metrics)
+            append_metrics_csv(CSV_LOG_PATH, metrics)
 
-        print("-" * 40)
-        print(f"Air Temperature: {metrics['air_temperature_c']} C / {metrics['air_temperature_f']} F")
-        print(f"Air Humidity   : {metrics['air_humidity']} %")
-        print(f"Air Pressure   : {metrics['air_pressure_hpa']} hPa")
-        print(f"Soil Voltage   : {metrics['soil_voltage']} V")
-        print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
-        print(f"Soil Status    : {metrics['soil_moisture_band']}")
+            print("-" * 40)
+            print(f"Air Temperature: {metrics['air_temperature_c']} C / {metrics['air_temperature_f']} F")
+            print(f"Air Humidity   : {metrics['air_humidity']} %")
+            print(f"Air Pressure   : {metrics['air_pressure_hpa']} hPa")
+            print(f"Soil Voltage   : {metrics['soil_voltage']} V")
+            print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
+            print(f"Soil Status    : {metrics['soil_moisture_band']}")
+            print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
 
-        loop_count += 1
-        if loop_count % CHATTTY_POST_EVERY_N_LOOPS == 0:
-            posted = post_to_chatty(metrics)
-            if posted:
-                print("Posted metrics to Chatty.")
-            else:
-                print("Chatty post skipped or failed.")
+            lcd.show_metrics(
+                metrics,
+                ip_address=ip_address,
+                web_port=WEB_PORT,
+                delay_seconds=2.5,
+                include_ip=True,
+            )
 
-        time.sleep(LOOP_SECONDS)
+            loop_count += 1
+            if loop_count % CHATTTY_POST_EVERY_N_LOOPS == 0:
+                posted = post_to_chatty(metrics)
+                if posted:
+                    print("Posted metrics to Chatty.")
+                else:
+                    print("Chatty post skipped or failed.")
+
+            time.sleep(LOOP_SECONDS)
+
+    except KeyboardInterrupt:
+        lcd.show_message("Monitor stopped", "", delay_seconds=1.5)
+    finally:
+        lcd.clear()
 
 
 if __name__ == "__main__":
