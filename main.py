@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 import socket
+import led_status
 from typing import Any
 
 from air_temperature import read_air_temperature_c, c_to_f
@@ -82,11 +83,13 @@ def metrics_provider() -> dict[str, Any]:
 
 
 def run_web_server() -> None:
+    led_status.set_blue(True)
     app = create_app(metrics_provider)
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)
 
-
 def main() -> None:
+    led_status.setup()
+    led_status.set_green(True)
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
@@ -102,6 +105,7 @@ def main() -> None:
         while True:
             metrics = collect_metrics()
             LATEST_METRICS.update(metrics)
+            led_status.set_red(metrics["soil_moisture_band"].lower() == "dry")
 
             append_metrics_csv(CSV_LOG_PATH, metrics)
 
@@ -136,6 +140,7 @@ def main() -> None:
         lcd.show_message("Monitor stopped", "", delay_seconds=1.5)
     finally:
         lcd.clear()
+        led_status.cleanup()
 
 
 if __name__ == "__main__":
