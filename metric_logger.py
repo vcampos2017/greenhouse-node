@@ -14,6 +14,8 @@ FIELDNAMES = [
     "air_pressure_hpa",
     "soil_voltage",
     "soil_moisture_percent",
+    "soil_temperature_c",
+    "soil_temperature_f",
     "soil_moisture_band",
 ]
 
@@ -31,6 +33,9 @@ def append_metrics_csv(log_path: str | Path, metrics: Mapping[str, Any]) -> None
         "soil_voltage": metrics.get("soil_voltage"),
         "soil_moisture_percent": metrics.get("soil_moisture_percent"),
         "soil_moisture_band": metrics.get("soil_moisture_band"),
+        "soil_temperature_c": metrics.get("soil_temperature_c"),
+        
+"soil_temperature_f": metrics.get("soil_temperature_f"),
     }
 
     with path.open("a", newline="", encoding="utf-8") as f:

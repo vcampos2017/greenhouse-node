@@ -7,6 +7,7 @@ import led_status
 from typing import Any
 
 from air_temperature import read_air_temperature_c, c_to_f
+from soil_temperature import read_soil_temperature_c
 from air_humidity import read_air_humidity, read_air_pressure_hpa
 from soil_moisture import read_soil_metrics
 from metric_logger import append_metrics_csv
@@ -39,6 +40,7 @@ LATEST_METRICS: dict[str, Any] = {
     "soil_voltage": None,
     "soil_moisture_percent": None,
     "soil_moisture_band": None,
+    "soil_temperature_c": None,
 }
 
 
@@ -58,6 +60,8 @@ def collect_metrics() -> dict[str, Any]:
     temp_c = read_air_temperature_c(address=BME280_ADDRESS)
     humidity = read_air_humidity(address=BME280_ADDRESS)
     pressure = read_air_pressure_hpa(address=BME280_ADDRESS)
+    soil_temp_c = read_soil_temperature_c()
+    soil_temp_f = c_to_f(soil_temp_c) if soil_temp_c is not None else None
 
     soil = read_soil_metrics(
         air_voltage=SOIL_AIR_VOLTAGE,
@@ -74,6 +78,8 @@ def collect_metrics() -> dict[str, Any]:
         "soil_voltage": round(soil["soil_voltage"], 3),
         "soil_moisture_percent": soil["soil_moisture_percent"],
         "soil_moisture_band": soil["soil_moisture_band"],
+        "soil_temperature_c": round(soil_temp_c, 2) if soil_temp_c is not None else None,
+        "soil_temperature_f": round(soil_temp_f, 2) if soil_temp_f is not None else None,
     }
     return metrics
 
@@ -114,6 +120,7 @@ def main() -> None:
             print(f"Air Humidity   : {metrics['air_humidity']} %")
             print(f"Air Pressure   : {metrics['air_pressure_hpa']} hPa")
             print(f"Soil Voltage   : {metrics['soil_voltage']} V")
+            print(f"Soil Temp      : {metrics['soil_temperature_c']} C / {metrics['soil_temperature_f']} F")
             print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
             print(f"Soil Status    : {metrics['soil_moisture_band']}")
             print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
