@@ -1,14 +1,23 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+
+# Logs & data
 *.log
 *.csv
-.cache/
-.config/
-.ssh/
-.python_history
+
+# Virtual environments
 venv/
 greenhouse-env/
+
+# Environment / secrets
 .env
 config_local.py
 secrets.py
+
+# Cache
+.cache/
+
+# OS / user junk
+.python_history
