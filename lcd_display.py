@@ -64,10 +64,17 @@ class LCDDisplay:
         pressure = metrics.get("air_pressure_hpa", "n/a")
         soil_percent = metrics.get("soil_moisture_percent", "n/a")
         soil_band = metrics.get("soil_moisture_band", "n/a")
+        soil_temp_f = metrics.get("soil_temperature_f", "n/a")
 
         self.write_lines(
             f"T:{temp_f}F H:{humidity}%",
             f"Soil:{soil_percent}%"
+        )
+        time.sleep(delay_seconds)
+
+        self.write_lines(
+            "Soil Temp:",
+            f"{soil_temp_f} F"
         )
         time.sleep(delay_seconds)
 
