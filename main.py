@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 import socket
+from pathlib import Path
 import led_status
 from typing import Any
 
@@ -30,6 +31,10 @@ CSV_LOG_PATH = "greenhouse_log.csv"
 WEB_HOST = "0.0.0.0"
 WEB_PORT = 5000
 CHATTTY_POST_EVERY_N_LOOPS = 6  # every 60 seconds if LOOP_SECONDS=10
+
+WATER_ALERT_COOLDOWN_SECONDS = 6 * 60 * 60  # 6 hours
+WATER_ALERT_STATE_FILE = Path("last_water_alert.txt")
+DRY_BANDS = {"dry", "critically dry"}
 
 
 LATEST_METRICS: dict[str, Any] = {
@@ -93,6 +98,43 @@ def run_web_server() -> None:
     app = create_app(metrics_provider)
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)
 
+
+def load_last_water_alert_time() -> float:
+    try:
+        return float(WATER_ALERT_STATE_FILE.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return 0.0
+
+
+def save_last_water_alert_time(ts: float) -> None:
+    WATER_ALERT_STATE_FILE.write_text(str(ts))
+
+
+def should_send_water_alert(metrics: dict[str, Any], last_alert_ts: float) -> bool:
+    band = str(metrics.get("soil_moisture_band", "")).strip().lower()
+    if band not in DRY_BANDS:
+        return False
+
+    now = time.time()
+    return (now - last_alert_ts) >= WATER_ALERT_COOLDOWN_SECONDS
+
+
+def build_water_alert_message(metrics: dict[str, Any]) -> str:
+    percent = metrics.get("soil_moisture_percent")
+    band = str(metrics.get("soil_moisture_band", "dry")).strip().lower()
+    temp_f = metrics.get("air_temperature_f")
+
+    if band == "critically dry":
+        urgency = "Please water the plant soon."
+    else:
+        urgency = "Watering is recommended."
+
+    return (
+        f"Greenhouse alert: Soil is {band} at {percent}%. "
+        f"Air temperature is {temp_f} F. {urgency}"
+    )
+
+
 def main() -> None:
     led_status.setup()
     led_status.set_green(True)
@@ -106,12 +148,48 @@ def main() -> None:
     lcd.show_ip_address(ip_address, port=WEB_PORT, delay_seconds=4)
 
     loop_count = 0
+    last_soil_band = None
+    water_alert_active = False
 
     try:
         while True:
             metrics = collect_metrics()
             LATEST_METRICS.update(metrics)
-            led_status.set_red(metrics["soil_moisture_band"].lower() == "dry")
+
+            current_band = str(metrics["soil_moisture_band"]).strip().lower()
+            led_status.set_red(current_band in DRY_BANDS)
+
+            entered_dry_state = (
+                current_band in DRY_BANDS and
+                last_soil_band not in DRY_BANDS
+            )
+
+            recovered_from_dry = (
+                current_band not in DRY_BANDS and
+                (last_soil_band in DRY_BANDS if last_soil_band is not None else False)
+            )
+
+            if entered_dry_state and not water_alert_active:
+                alert_message = build_water_alert_message(metrics)
+                print(f"Chatty water alert: {alert_message}")
+
+                posted = post_to_chatty({
+                    **metrics,
+                    "alert_type": "water_needed",
+                    "alert_message": alert_message,
+                })
+
+                if posted:
+                    print("Water alert posted to Chatty.")
+                    water_alert_active = True
+                else:
+                    print("Water alert failed to post to Chatty.")
+
+            if recovered_from_dry:
+                print("Soil recovered from dry state. Water alert reset.")
+                water_alert_active = False
+
+            last_soil_band = current_band
 
             append_metrics_csv(CSV_LOG_PATH, metrics)
 

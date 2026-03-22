@@ -283,6 +283,29 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
         </body>
         </html>
         """
+    @app.route("/status")
+    def status():
+        return jsonify({
+             "node": "greenhouse-node",
+             "metrics": metrics_provider(),
+            })
+
+    @app.route("/command", methods=["POST"])
+    def command():
+        from flask import request
+
+        data = request.json or {}
+        action = data.get("action")
+
+        print(f"[COMMAND RECEIVED] {action}")
+
+        # Placeholder behavior (we'll connect hardware later)
+        if action == "water_on":
+            return {"status": "ok", "message": "Water ON (simulated)"}
+        elif action == "water_off":
+            return {"status": "ok", "message": "Water OFF (simulated)"}
+        else:
+            return {"status": "error", "message": "Unknown command"}, 400
 
     @app.route("/metrics.json")
     def metrics_json():

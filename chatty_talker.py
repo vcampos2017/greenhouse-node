@@ -9,34 +9,50 @@ from typing import Mapping, Any
 
 def post_to_chatty(metrics: Mapping[str, Any]) -> bool:
     """
-    Posts a snapshot to Chatty if CHATTTY_WEBHOOK_URL or CHATTTY_WEBHOOK_TOKEN is configured.
+    Sends a plain-text message to Chatty's /chat endpoint.
 
     Environment variables:
-      - CHATTTY_WEBHOOK_URL
-      - CHATTTY_WEBHOOK_TOKEN (optional)
+      - CHATTY_WEBHOOK_URL
+      - CHATTY_WEBHOOK_TOKEN
     """
-    url = os.getenv("CHATTTY_WEBHOOK_URL", "").strip()
-    token = os.getenv("CHATTTY_WEBHOOK_TOKEN", "").strip()
+    url = os.getenv("CHATTY_WEBHOOK_URL", "").strip()
+    token = os.getenv("CHATTY_WEBHOOK_TOKEN", "").strip()
 
-    if not url:
+    if not url or not token:
         return False
 
+    metrics_dict = dict(metrics)
+
+    message = metrics_dict.get("alert_message")
+    if not message:
+        soil_pct = metrics_dict.get("soil_moisture_percent")
+        soil_band = metrics_dict.get("soil_moisture_band")
+        air_temp_f = metrics_dict.get("air_temperature_f")
+        message = (
+            f"Greenhouse status update: soil is {soil_band} at {soil_pct}%. "
+            f"Air temperature is {air_temp_f} F."
+        )
+
     payload = {
-        "source": "greenhouse-pi",
-        "metrics": dict(metrics),
+        "text": message
     }
 
     data = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
+        "x-chatty-token": token,
     }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
 
-    request = urllib.request.Request(url=url, data=data, headers=headers, method="POST")
+    request = urllib.request.Request(
+        url=url,
+        data=data,
+        headers=headers,
+        method="POST",
+    )
 
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             return 200 <= response.status < 300
-    except (urllib.error.URLError, urllib.error.HTTPError):
+    except (urllib.error.URLError, urllib.error.HTTPError) as exc:
+        print(f"Chatty webhook failed: {exc}")
         return False
