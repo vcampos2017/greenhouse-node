@@ -253,6 +253,57 @@ The dashboard refreshes every 10 seconds.
 
 ⸻
 
+API Endpoints
+
+The Greenhouse Node exposes lightweight local HTTP endpoints for monitoring and integration.
+
+Dashboard:
+
+http://<pi_ip>:5000/
+
+Current status with node identity and nested metrics:
+
+http://<pi_ip>:5000/status
+
+Raw metrics JSON:
+
+http://<pi_ip>:5000/metrics.json
+
+Health check:
+
+http://<pi_ip>:5000/health
+
+The /health endpoint reports:
+    •   node identity
+    •   overall status
+    •   ok true/false
+    •   missing metrics
+    •   available metrics
+
+Example health response:
+
+{
+  "node": "greenhouse-node",
+  "status": "ok",
+  "ok": true,
+  "missing_metrics": [],
+  "metrics_available": [
+    "air_humidity",
+    "air_pressure_hpa",
+    "air_temperature_c",
+    "air_temperature_f",
+    "soil_moisture_band",
+    "soil_moisture_percent",
+    "soil_temperature_c",
+    "soil_temperature_f",
+    "soil_voltage"
+  ]
+}
+
+For Chatty-Node integration, /status is the preferred endpoint for sensor readings, while /health is the preferred endpoint for checking whether the node is alive and reporting complete data.
+
+⸻
+
 Soil Moisture Calibration
 
 Capacitive soil sensors require calibration.
