@@ -313,6 +313,29 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
 
     @app.route("/health")
     def health():
-        return {"ok": True}
+        metrics = metrics_provider()
+        expected_metrics = [
+            "air_temperature_c",
+            "air_temperature_f",
+            "air_humidity",
+            "air_pressure_hpa",
+            "soil_voltage",
+            "soil_moisture_percent",
+            "soil_moisture_band",
+            "soil_temperature_c",
+            "soil_temperature_f",
+        ]
+        missing_metrics = [
+            name for name in expected_metrics
+            if metrics.get(name) is None
+        ]
+        health_status = "ok" if not missing_metrics else "degraded"
+        return jsonify({
+            "node": "greenhouse-node",
+            "status": health_status,
+            "ok": health_status == "ok",
+            "missing_metrics": missing_metrics,
+            "metrics_available": sorted(metrics.keys()),
+        })
 
     return app
