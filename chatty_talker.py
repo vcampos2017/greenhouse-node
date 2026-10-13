@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
-import urllib.error
 import urllib.request
 from typing import Mapping, Any
 
@@ -43,16 +43,17 @@ def post_to_chatty(metrics: Mapping[str, Any]) -> bool:
         "x-chatty-token": token,
     }
 
-    request = urllib.request.Request(
-        url=url,
-        data=data,
-        headers=headers,
-        method="POST",
-    )
-
     try:
+        request = urllib.request.Request(
+            url=url,
+            data=data,
+            headers=headers,
+            method="POST",
+        )
         with urllib.request.urlopen(request, timeout=10) as response:
             return 200 <= response.status < 300
-    except (urllib.error.URLError, urllib.error.HTTPError) as exc:
+    # OSError covers URLError/HTTPError plus connection resets and read timeouts,
+    # which urllib raises without wrapping in URLError.
+    except (OSError, ValueError, http.client.HTTPException) as exc:
         print(f"Chatty webhook failed: {exc}")
         return False

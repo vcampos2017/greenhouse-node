@@ -23,6 +23,8 @@ def voltage_to_percent(voltage: float, air_voltage: float, wet_voltage: float) -
 
 
 def moisture_band(percent: int) -> str:
+    if percent < 10:
+        return "critically dry"
     if percent < 25:
         return "dry"
     if percent < 60:

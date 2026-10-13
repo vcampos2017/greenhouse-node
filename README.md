@@ -69,7 +69,7 @@ Analog soil probe
 
 Optional Output
 
-16x2 LCD display with I2C backpack
+16x2 LCD display with I2C backpack (the node keeps running without it)
 
 ⸻
 
@@ -128,8 +128,9 @@ Converts raw voltage into:
 	•	soil moisture percentage
 	•	soil moisture band classification
 
-Dry
-Moderate
+Critically dry (< 10%)
+Dry (< 25%)
+Moderate (< 60%)
 Wet
 
 ⸻
@@ -349,10 +350,12 @@ Chatty Integration (Optional)
 
 Set environment variables:
 
-CHATTTY_WEBHOOK_URL
-CHATTTY_WEBHOOK_TOKEN
+CHATTY_WEBHOOK_URL
+CHATTY_WEBHOOK_TOKEN
 
 The monitor will periodically transmit sensor metrics to the configured endpoint.
+
+When the soil reads dry or critically dry, a water alert is sent. Alerts are limited to one every 6 hours (WATER_ALERT_COOLDOWN_SECONDS in main.py). While the soil stays dry, a reminder is sent each time the cooldown expires. A failed alert is retried on the next loop. The time of the last alert is stored in last_water_alert.txt, so restarting the node does not re-send it.
 
 ⸻
 

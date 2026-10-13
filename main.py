@@ -3,9 +3,10 @@ from __future__ import annotations
 import threading
 import time
 import socket
+import traceback
 from pathlib import Path
 import led_status
-from typing import Any
+from typing import Any, Callable
 
 from air_temperature import read_air_temperature_c, c_to_f
 from soil_temperature import read_soil_temperature_c
@@ -21,6 +22,7 @@ from lcd_display import LCDDisplay
 BME280_ADDRESS = 0x76
 ADS1115_ADDRESS = 0x48
 ADS_CHANNEL = 0
+LCD_ADDRESS = 0x27
 
 # Replace these later with your measured values
 SOIL_AIR_VOLTAGE = 2.23
@@ -30,7 +32,7 @@ LOOP_SECONDS = 10
 CSV_LOG_PATH = "greenhouse_log.csv"
 WEB_HOST = "0.0.0.0"
 WEB_PORT = 5000
-CHATTTY_POST_EVERY_N_LOOPS = 6  # every 60 seconds if LOOP_SECONDS=10
+CHATTY_POST_EVERY_N_LOOPS = 6
 
 WATER_ALERT_COOLDOWN_SECONDS = 6 * 60 * 60  # 6 hours
 WATER_ALERT_STATE_FILE = Path("last_water_alert.txt")
@@ -61,30 +63,45 @@ def get_local_ip() -> str:
     return ip
 
 
-def collect_metrics() -> dict[str, Any]:
-    temp_c = read_air_temperature_c(address=BME280_ADDRESS)
-    humidity = read_air_humidity(address=BME280_ADDRESS)
-    pressure = read_air_pressure_hpa(address=BME280_ADDRESS)
-    soil_temp_c = read_soil_temperature_c()
-    soil_temp_f = c_to_f(soil_temp_c) if soil_temp_c is not None else None
+def read_sensor(name: str, read: Callable[[], Any]) -> Any:
+    """Run a sensor read, returning None instead of raising if it fails."""
+    try:
+        return read()
+    except Exception as exc:
+        print(f"Sensor read failed ({name}): {exc}")
+        return None
 
-    soil = read_soil_metrics(
-        air_voltage=SOIL_AIR_VOLTAGE,
-        wet_voltage=SOIL_WET_VOLTAGE,
-        i2c_address=ADS1115_ADDRESS,
-        channel=ADS_CHANNEL,
-    )
+
+def round_or_none(value: float | None, digits: int) -> float | None:
+    return round(value, digits) if value is not None else None
+
+
+def collect_metrics() -> dict[str, Any]:
+    temp_c = read_sensor("air temperature", lambda: read_air_temperature_c(address=BME280_ADDRESS))
+    humidity = read_sensor("air humidity", lambda: read_air_humidity(address=BME280_ADDRESS))
+    pressure = read_sensor("air pressure", lambda: read_air_pressure_hpa(address=BME280_ADDRESS))
+    soil_temp_c = read_sensor("soil temperature", read_soil_temperature_c)
+
+    soil = read_sensor(
+        "soil moisture",
+        lambda: read_soil_metrics(
+            air_voltage=SOIL_AIR_VOLTAGE,
+            wet_voltage=SOIL_WET_VOLTAGE,
+            i2c_address=ADS1115_ADDRESS,
+            channel=ADS_CHANNEL,
+        ),
+    ) or {}
 
     metrics = {
-        "air_temperature_c": round(temp_c, 2),
-        "air_temperature_f": round(c_to_f(temp_c), 2),
-        "air_humidity": round(humidity, 2),
-        "air_pressure_hpa": round(pressure, 2),
-        "soil_voltage": round(soil["soil_voltage"], 3),
-        "soil_moisture_percent": soil["soil_moisture_percent"],
-        "soil_moisture_band": soil["soil_moisture_band"],
-        "soil_temperature_c": round(soil_temp_c, 2) if soil_temp_c is not None else None,
-        "soil_temperature_f": round(soil_temp_f, 2) if soil_temp_f is not None else None,
+        "air_temperature_c": round_or_none(temp_c, 2),
+        "air_temperature_f": round_or_none(c_to_f(temp_c), 2) if temp_c is not None else None,
+        "air_humidity": round_or_none(humidity, 2),
+        "air_pressure_hpa": round_or_none(pressure, 2),
+        "soil_voltage": round_or_none(soil.get("soil_voltage"), 3),
+        "soil_moisture_percent": soil.get("soil_moisture_percent"),
+        "soil_moisture_band": soil.get("soil_moisture_band"),
+        "soil_temperature_c": round_or_none(soil_temp_c, 2),
+        "soil_temperature_f": round_or_none(c_to_f(soil_temp_c), 2) if soil_temp_c is not None else None,
     }
     return metrics
 
@@ -99,15 +116,36 @@ def run_web_server() -> None:
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)
 
 
+def init_lcd() -> LCDDisplay | None:
+    try:
+        return LCDDisplay(address=LCD_ADDRESS)
+    except Exception as exc:
+        print(f"LCD not available, continuing without it: {exc}")
+        return None
+
+
+def run_lcd(lcd: LCDDisplay | None, action: Callable[[LCDDisplay], None]) -> None:
+    """Run an LCD action, skipping it if there is no LCD and ignoring LCD errors."""
+    if lcd is None:
+        return
+    try:
+        action(lcd)
+    except Exception as exc:
+        print(f"LCD error: {exc}")
+
+
 def load_last_water_alert_time() -> float:
     try:
         return float(WATER_ALERT_STATE_FILE.read_text().strip())
-    except (FileNotFoundError, ValueError):
+    except (OSError, ValueError):
         return 0.0
 
 
 def save_last_water_alert_time(ts: float) -> None:
-    WATER_ALERT_STATE_FILE.write_text(str(ts))
+    try:
+        WATER_ALERT_STATE_FILE.write_text(str(ts))
+    except OSError as exc:
+        print(f"Could not save water alert time: {exc}")
 
 
 def should_send_water_alert(metrics: dict[str, Any], last_alert_ts: float) -> bool:
@@ -141,90 +179,92 @@ def main() -> None:
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
-    lcd = LCDDisplay(address=0x27)
+    lcd = init_lcd()
     ip_address = get_local_ip()
 
-    lcd.show_message("Greenhouse Node", "Starting...", delay_seconds=2)
-    lcd.show_ip_address(ip_address, port=WEB_PORT, delay_seconds=4)
+    run_lcd(lcd, lambda d: d.show_message("Greenhouse Node", "Starting...", delay_seconds=2))
+    run_lcd(lcd, lambda d: d.show_ip_address(ip_address, port=WEB_PORT, delay_seconds=4))
 
     loop_count = 0
     last_soil_band = None
-    water_alert_active = False
+    # Persisted so that restarting the node doesn't re-send an alert
+    # that already went out within the cooldown window.
+    last_water_alert_ts = load_last_water_alert_time()
 
     try:
         while True:
-            metrics = collect_metrics()
-            LATEST_METRICS.update(metrics)
+            try:
+                metrics = collect_metrics()
+                LATEST_METRICS.update(metrics)
 
-            current_band = str(metrics["soil_moisture_band"]).strip().lower()
-            led_status.set_red(current_band in DRY_BANDS)
+                band = metrics["soil_moisture_band"]
+                current_band = band.strip().lower() if band is not None else None
+                led_status.set_red(current_band in DRY_BANDS)
 
-            entered_dry_state = (
-                current_band in DRY_BANDS and
-                last_soil_band not in DRY_BANDS
-            )
+                # Sends when the soil is dry and no alert has gone out within the
+                # cooldown. A failed post is retried on the next loop, and while the
+                # soil stays dry a reminder goes out once per cooldown period.
+                if should_send_water_alert(metrics, last_water_alert_ts):
+                    alert_message = build_water_alert_message(metrics)
+                    print(f"Chatty water alert: {alert_message}")
 
-            recovered_from_dry = (
-                current_band not in DRY_BANDS and
-                (last_soil_band in DRY_BANDS if last_soil_band is not None else False)
-            )
+                    posted = post_to_chatty({
+                        **metrics,
+                        "alert_type": "water_needed",
+                        "alert_message": alert_message,
+                    })
 
-            if entered_dry_state and not water_alert_active:
-                alert_message = build_water_alert_message(metrics)
-                print(f"Chatty water alert: {alert_message}")
+                    if posted:
+                        print("Water alert posted to Chatty.")
+                        last_water_alert_ts = time.time()
+                        save_last_water_alert_time(last_water_alert_ts)
+                    else:
+                        print("Water alert failed to post to Chatty. Will retry next loop.")
 
-                posted = post_to_chatty({
-                    **metrics,
-                    "alert_type": "water_needed",
-                    "alert_message": alert_message,
-                })
+                if current_band is not None:
+                    if last_soil_band in DRY_BANDS and current_band not in DRY_BANDS:
+                        print("Soil recovered from dry state.")
+                    last_soil_band = current_band
 
-                if posted:
-                    print("Water alert posted to Chatty.")
-                    water_alert_active = True
-                else:
-                    print("Water alert failed to post to Chatty.")
+                append_metrics_csv(CSV_LOG_PATH, metrics)
 
-            if recovered_from_dry:
-                print("Soil recovered from dry state. Water alert reset.")
-                water_alert_active = False
+                print("-" * 40)
+                print(f"Air Temperature: {metrics['air_temperature_c']} C / {metrics['air_temperature_f']} F")
+                print(f"Air Humidity   : {metrics['air_humidity']} %")
+                print(f"Air Pressure   : {metrics['air_pressure_hpa']} hPa")
+                print(f"Soil Voltage   : {metrics['soil_voltage']} V")
+                print(f"Soil Temp      : {metrics['soil_temperature_c']} C / {metrics['soil_temperature_f']} F")
+                print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
+                print(f"Soil Status    : {metrics['soil_moisture_band']}")
+                print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
 
-            last_soil_band = current_band
+                run_lcd(lcd, lambda d: d.show_metrics(
+                    metrics,
+                    ip_address=ip_address,
+                    web_port=WEB_PORT,
+                    delay_seconds=2.5,
+                    include_ip=True,
+                ))
 
-            append_metrics_csv(CSV_LOG_PATH, metrics)
+                loop_count += 1
+                if loop_count % CHATTY_POST_EVERY_N_LOOPS == 0:
+                    posted = post_to_chatty(metrics)
+                    if posted:
+                        print("Posted metrics to Chatty.")
+                    else:
+                        print("Chatty post skipped or failed.")
 
-            print("-" * 40)
-            print(f"Air Temperature: {metrics['air_temperature_c']} C / {metrics['air_temperature_f']} F")
-            print(f"Air Humidity   : {metrics['air_humidity']} %")
-            print(f"Air Pressure   : {metrics['air_pressure_hpa']} hPa")
-            print(f"Soil Voltage   : {metrics['soil_voltage']} V")
-            print(f"Soil Temp      : {metrics['soil_temperature_c']} C / {metrics['soil_temperature_f']} F")
-            print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
-            print(f"Soil Status    : {metrics['soil_moisture_band']}")
-            print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
-
-            lcd.show_metrics(
-                metrics,
-                ip_address=ip_address,
-                web_port=WEB_PORT,
-                delay_seconds=2.5,
-                include_ip=True,
-            )
-
-            loop_count += 1
-            if loop_count % CHATTTY_POST_EVERY_N_LOOPS == 0:
-                posted = post_to_chatty(metrics)
-                if posted:
-                    print("Posted metrics to Chatty.")
-                else:
-                    print("Chatty post skipped or failed.")
+            except Exception:
+                # Never let one bad cycle (I2C glitch, full disk, etc.) stop the monitor.
+                print("Error during monitoring loop; retrying next cycle.")
+                traceback.print_exc()
 
             time.sleep(LOOP_SECONDS)
 
     except KeyboardInterrupt:
-        lcd.show_message("Monitor stopped", "", delay_seconds=1.5)
+        run_lcd(lcd, lambda d: d.show_message("Monitor stopped", "", delay_seconds=1.5))
     finally:
-        lcd.clear()
+        run_lcd(lcd, lambda d: d.clear())
         led_status.cleanup()
 
 

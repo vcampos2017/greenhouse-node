@@ -59,12 +59,17 @@ class LCDDisplay:
         delay_seconds: float = 4.0,
         include_ip: bool = False,
     ) -> None:
-        temp_f = metrics.get("air_temperature_f", "n/a")
-        humidity = metrics.get("air_humidity", "n/a")
-        pressure = metrics.get("air_pressure_hpa", "n/a")
-        soil_percent = metrics.get("soil_moisture_percent", "n/a")
-        soil_band = metrics.get("soil_moisture_band", "n/a")
-        soil_temp_f = metrics.get("soil_temperature_f", "n/a")
+        def value(key: str) -> Any:
+            # Failed sensor reads come through as None
+            result = metrics.get(key)
+            return "n/a" if result is None else result
+
+        temp_f = value("air_temperature_f")
+        humidity = value("air_humidity")
+        pressure = value("air_pressure_hpa")
+        soil_percent = value("soil_moisture_percent")
+        soil_band = value("soil_moisture_band")
+        soil_temp_f = value("soil_temperature_f")
 
         self.write_lines(
             f"T:{temp_f}F H:{humidity}%",
