@@ -47,10 +47,6 @@ class LCDDisplay:
         if delay_seconds is not None:
             time.sleep(delay_seconds)
 
-    def show_ip_address(self, ip_address: str, port: int = 5000, delay_seconds: float = 4.0) -> None:
-        self.write_lines("Web Dashboard:", self._short_ip(ip_address, port))
-        time.sleep(delay_seconds)
-
     def metric_screens(
         self,
         metrics: Mapping[str, Any],

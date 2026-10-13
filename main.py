@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 import threading
 import time
 import socket
@@ -9,9 +10,8 @@ from pathlib import Path
 import led_status
 from typing import Any, Callable
 
-from air_temperature import read_air_temperature_c, c_to_f
+from air_sensor import read_air_metrics, c_to_f
 from soil_temperature import read_soil_temperature_c
-from air_humidity import read_air_humidity, read_air_pressure_hpa
 from soil_moisture import read_soil_metrics
 from metric_logger import append_metrics_csv
 from chatty_talker import post_to_chatty
@@ -51,6 +51,7 @@ LATEST_METRICS: dict[str, Any] = {
     "soil_moisture_percent": None,
     "soil_moisture_band": None,
     "soil_temperature_c": None,
+    "soil_temperature_f": None,
 }
 
 
@@ -80,9 +81,8 @@ def round_or_none(value: float | None, digits: int) -> float | None:
 
 
 def collect_metrics() -> dict[str, Any]:
-    temp_c = read_sensor("air temperature", lambda: read_air_temperature_c(address=BME280_ADDRESS))
-    humidity = read_sensor("air humidity", lambda: read_air_humidity(address=BME280_ADDRESS))
-    pressure = read_sensor("air pressure", lambda: read_air_pressure_hpa(address=BME280_ADDRESS))
+    air = read_sensor("BME280", lambda: read_air_metrics(address=BME280_ADDRESS)) or {}
+    temp_c = air.get("temperature_c")
     soil_temp_c = read_sensor("soil temperature", read_soil_temperature_c)
 
     soil = read_sensor(
@@ -99,8 +99,8 @@ def collect_metrics() -> dict[str, Any]:
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "air_temperature_c": round_or_none(temp_c, 2),
         "air_temperature_f": round_or_none(c_to_f(temp_c), 2) if temp_c is not None else None,
-        "air_humidity": round_or_none(humidity, 2),
-        "air_pressure_hpa": round_or_none(pressure, 2),
+        "air_humidity": round_or_none(air.get("humidity"), 2),
+        "air_pressure_hpa": round_or_none(air.get("pressure_hpa"), 2),
         "soil_voltage": round_or_none(soil.get("soil_voltage"), 3),
         "soil_moisture_percent": soil.get("soil_moisture_percent"),
         "soil_moisture_band": soil.get("soil_moisture_band"),
@@ -197,7 +197,13 @@ def build_water_alert_message(metrics: dict[str, Any]) -> str:
     )
 
 
+def handle_sigterm(signum: int, frame: Any) -> None:
+    # systemd stops the service with SIGTERM; treat it like Ctrl+C so cleanup runs.
+    raise KeyboardInterrupt
+
+
 def main() -> None:
+    signal.signal(signal.SIGTERM, handle_sigterm)
     led_status.setup()
     led_status.set_green(True)
     web_thread = threading.Thread(target=run_web_server, daemon=True)

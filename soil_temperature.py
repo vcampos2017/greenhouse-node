@@ -47,13 +47,3 @@ def read_soil_temperature_c() -> Optional[float]:
 
     except (OSError, ValueError):
         return None
-
-
-def read_soil_temperature_f() -> Optional[float]:
-    """
-    Read soil temperature in Fahrenheit.
-    """
-    temp_c = read_soil_temperature_c()
-    if temp_c is None:
-        return None
-    return round((temp_c * 9 / 5) + 32, 2)

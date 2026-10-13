@@ -15,6 +15,34 @@ MetricsProvider = Callable[[], dict]
 _HISTORY_CHUNK_BYTES = 64 * 1024
 
 
+# Styles shared by the dashboard and history pages
+_BASE_CSS = """
+body {
+    font-family: Arial, sans-serif;
+    margin: 24px;
+    background: #f6f8f7;
+    color: #1f2a1f;
+}
+.card {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+a.button {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #2f6f57;
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+}
+"""
+
+
 def _line_timestamp(line: bytes) -> datetime | None:
     try:
         return datetime.fromisoformat(line.split(b",", 1)[0].decode("utf-8"))
@@ -175,34 +203,12 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Greenhouse Monitor</title>
             <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    margin: 24px;
-                    background: #f6f8f7;
-                    color: #1f2a1f;
-                }}
-                .card {{
-                    background: white;
-                    border-radius: 14px;
-                    padding: 20px;
-                    margin-bottom: 16px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                }}
+                {_BASE_CSS}
                 .reading {{
                     font-size: 1.2rem;
                     margin: 10px 0;
                 }}
                 .label {{
-                    font-weight: bold;
-                }}
-                a.button {{
-                    display: inline-block;
-                    margin-top: 12px;
-                    padding: 10px 14px;
-                    border-radius: 10px;
-                    background: #2f6f57;
-                    color: white;
-                    text-decoration: none;
                     font-weight: bold;
                 }}
                 .subtle {{
@@ -244,19 +250,7 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Greenhouse Monitor - 24 Hour History</title>
             <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    margin: 24px;
-                    background: #f6f8f7;
-                    color: #1f2a1f;
-                }}
-                .card {{
-                    background: white;
-                    border-radius: 14px;
-                    padding: 20px;
-                    margin-bottom: 16px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                }}
+                {_BASE_CSS}
                 table {{
                     width: 100%;
                     border-collapse: collapse;
@@ -269,16 +263,6 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
                 }}
                 th {{
                     background: #eef4f0;
-                }}
-                a.button {{
-                    display: inline-block;
-                    margin-top: 12px;
-                    padding: 10px 14px;
-                    border-radius: 10px;
-                    background: #2f6f57;
-                    color: white;
-                    text-decoration: none;
-                    font-weight: bold;
                 }}
                 .grid {{
                     display: grid;
