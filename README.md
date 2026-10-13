@@ -250,7 +250,7 @@ Example:
 
 http://192.168.1.227:5000
 
-The dashboard refreshes every 10 seconds.
+The dashboard refreshes every 10 seconds, matching the sensor read interval.
 
 ⸻
 
@@ -265,6 +265,10 @@ http://<pi_ip>:5000/
 Current status with node identity and nested metrics:
 
 http://<pi_ip>:5000/status
+
+24-hour history page:
+
+http://<pi_ip>:5000/history
 
 Raw metrics JSON:
 
@@ -300,6 +304,20 @@ Example health response:
     "soil_voltage"
   ]
 }
+
+Metrics include a "timestamp" field with the time of the latest reading.
+
+Command endpoint (POST, currently simulated):
+
+http://<pi_ip>:5000/command
+
+Body: {"action": "water_on"} or {"action": "water_off"}
+
+Commands must include the header x-greenhouse-token matching the GREENHOUSE_COMMAND_TOKEN environment variable. If GREENHOUSE_COMMAND_TOKEN is not set, all commands are refused.
+
+Example:
+
+curl -X POST http://<pi_ip>:5000/command -H "Content-Type: application/json" -H "x-greenhouse-token: $GREENHOUSE_COMMAND_TOKEN" -d '{"action": "water_on"}'
 
 For Chatty-Node integration, /status is the preferred endpoint for sensor readings, while /health is the preferred endpoint for checking whether the node is alive and reporting complete data.
 

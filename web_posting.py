@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 import csv
+import hmac
+import io
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 MetricsProvider = Callable[[], dict]
+
+_HISTORY_CHUNK_BYTES = 64 * 1024
+
+
+def _line_timestamp(line: bytes) -> datetime | None:
+    try:
+        return datetime.fromisoformat(line.split(b",", 1)[0].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
 
 
 def _read_recent_history(log_path: Path, hours: int = 24) -> list[dict]:
@@ -17,19 +29,43 @@ def _read_recent_history(log_path: Path, hours: int = 24) -> list[dict]:
     cutoff = datetime.now() - timedelta(hours=hours)
     rows: list[dict] = []
 
-    with log_path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            ts_raw = row.get("timestamp")
-            if not ts_raw:
+    # The log is append-only and grows forever, so instead of parsing the whole
+    # file, read backwards from the end until we reach a row older than the cutoff.
+    with log_path.open("rb") as f:
+        header = f.readline()
+        data_start = f.tell()
+        pos = f.seek(0, os.SEEK_END)
+        buffer = b""
+        while pos > data_start:
+            step = min(_HISTORY_CHUNK_BYTES, pos - data_start)
+            pos -= step
+            f.seek(pos)
+            buffer = f.read(step) + buffer
+            # The first line in the buffer may be partial unless we've reached the header
+            line_start = 0 if pos == data_start else buffer.find(b"\n") + 1
+            if pos > data_start and line_start == 0:
                 continue
-            try:
-                ts = datetime.fromisoformat(ts_raw)
-            except ValueError:
-                continue
-            if ts >= cutoff:
-                row["_parsed_timestamp"] = ts
-                rows.append(row)
+            line_end = buffer.find(b"\n", line_start)
+            oldest_ts = _line_timestamp(buffer[line_start:line_end if line_end != -1 else None])
+            if oldest_ts is not None and oldest_ts < cutoff:
+                break
+        if pos > data_start:
+            # Drop the partial line at the start of the buffer
+            buffer = buffer.split(b"\n", 1)[1] if b"\n" in buffer else b""
+
+    text = (header + buffer).decode("utf-8", errors="replace")
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    for row in reader:
+        ts_raw = row.get("timestamp")
+        if not ts_raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_raw)
+        except ValueError:
+            continue
+        if ts >= cutoff:
+            row["_parsed_timestamp"] = ts
+            rows.append(row)
 
     rows.sort(key=lambda r: r["_parsed_timestamp"])
     return rows
@@ -112,6 +148,16 @@ def _build_summary(rows: list[dict]) -> dict:
     }
 
 
+def _command_authorized() -> bool:
+    """Check the request's x-greenhouse-token header against GREENHOUSE_COMMAND_TOKEN.
+
+    If the token isn't configured, commands are refused.
+    """
+    expected = os.getenv("GREENHOUSE_COMMAND_TOKEN", "").strip()
+    provided = request.headers.get("x-greenhouse-token", "")
+    return bool(expected) and hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+
 def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_log.csv") -> Flask:
     app = Flask(__name__)
     log_file = Path(log_path)
@@ -119,8 +165,7 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
     @app.route("/")
     def index() -> str:
         metrics = metrics_provider()
-        history = _read_recent_history(log_file, hours=24)
-        latest_timestamp = history[-1].get("timestamp") if history else None
+        latest_timestamp = metrics.get("timestamp")
 
         return f"""
         <!doctype html>
@@ -292,9 +337,10 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
 
     @app.route("/command", methods=["POST"])
     def command():
-        from flask import request
+        if not _command_authorized():
+            return {"status": "error", "message": "Unauthorized"}, 401
 
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         action = data.get("action")
 
         print(f"[COMMAND RECEIVED] {action}")

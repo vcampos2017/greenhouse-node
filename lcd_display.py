@@ -51,52 +51,27 @@ class LCDDisplay:
         self.write_lines("Web Dashboard:", self._short_ip(ip_address, port))
         time.sleep(delay_seconds)
 
-    def show_metrics(
+    def metric_screens(
         self,
         metrics: Mapping[str, Any],
         ip_address: str | None = None,
         web_port: int = 5000,
-        delay_seconds: float = 4.0,
-        include_ip: bool = False,
-    ) -> None:
+    ) -> list[tuple[str, str]]:
+        """Return the (line1, line2) screens to cycle through for these metrics."""
         def value(key: str) -> Any:
             # Failed sensor reads come through as None
             result = metrics.get(key)
             return "n/a" if result is None else result
 
-        temp_f = value("air_temperature_f")
-        humidity = value("air_humidity")
-        pressure = value("air_pressure_hpa")
-        soil_percent = value("soil_moisture_percent")
-        soil_band = value("soil_moisture_band")
-        soil_temp_f = value("soil_temperature_f")
-
-        self.write_lines(
-            f"T:{temp_f}F H:{humidity}%",
-            f"Soil:{soil_percent}%"
-        )
-        time.sleep(delay_seconds)
-
-        self.write_lines(
-            "Soil Temp:",
-            f"{soil_temp_f} F"
-        )
-        time.sleep(delay_seconds)
-
-        self.write_lines(
-            "Pressure:",
-            f"{pressure} hPa"
-        )
-        time.sleep(delay_seconds)
-
-        self.write_lines(
-            "Soil Status:",
-            str(soil_band).capitalize()
-        )
-        time.sleep(delay_seconds)
-
-        if include_ip and ip_address:
-            self.show_ip_address(ip_address, port=web_port, delay_seconds=delay_seconds)
+        screens = [
+            (f"T:{value('air_temperature_f')}F H:{value('air_humidity')}%", f"Soil:{value('soil_moisture_percent')}%"),
+            ("Soil Temp:", f"{value('soil_temperature_f')} F"),
+            ("Pressure:", f"{value('air_pressure_hpa')} hPa"),
+            ("Soil Status:", str(value("soil_moisture_band")).capitalize()),
+        ]
+        if ip_address:
+            screens.append(("Web Dashboard:", self._short_ip(ip_address, web_port)))
+        return screens
 
     def _fit(self, text: Any) -> str:
         return str(text)[: self.cols].ljust(self.cols)

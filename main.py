@@ -4,6 +4,7 @@ import threading
 import time
 import socket
 import traceback
+from datetime import datetime
 from pathlib import Path
 import led_status
 from typing import Any, Callable
@@ -32,7 +33,8 @@ LOOP_SECONDS = 10
 CSV_LOG_PATH = "greenhouse_log.csv"
 WEB_HOST = "0.0.0.0"
 WEB_PORT = 5000
-CHATTY_POST_EVERY_N_LOOPS = 6
+CHATTY_POST_EVERY_N_LOOPS = 6  # every 60 seconds if LOOP_SECONDS=10
+LCD_SCREEN_SECONDS = 2.5
 
 WATER_ALERT_COOLDOWN_SECONDS = 6 * 60 * 60  # 6 hours
 WATER_ALERT_STATE_FILE = Path("last_water_alert.txt")
@@ -40,6 +42,7 @@ DRY_BANDS = {"dry", "critically dry"}
 
 
 LATEST_METRICS: dict[str, Any] = {
+    "timestamp": None,
     "air_temperature_c": None,
     "air_temperature_f": None,
     "air_humidity": None,
@@ -93,6 +96,7 @@ def collect_metrics() -> dict[str, Any]:
     ) or {}
 
     metrics = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
         "air_temperature_c": round_or_none(temp_c, 2),
         "air_temperature_f": round_or_none(c_to_f(temp_c), 2) if temp_c is not None else None,
         "air_humidity": round_or_none(humidity, 2),
@@ -132,6 +136,26 @@ def run_lcd(lcd: LCDDisplay | None, action: Callable[[LCDDisplay], None]) -> Non
         action(lcd)
     except Exception as exc:
         print(f"LCD error: {exc}")
+
+
+def run_lcd_display(lcd: LCDDisplay, ip_address: str, stop: threading.Event) -> None:
+    """Cycle the LCD through the latest readings until stop is set.
+
+    Runs in its own thread so the screen pauses don't slow down sensor reads.
+    """
+    run_lcd(lcd, lambda d: d.write_lines("Greenhouse Node", "Starting..."))
+    if stop.wait(2):
+        return
+    run_lcd(lcd, lambda d: d.write_lines("Web Dashboard:", f"{ip_address}:{WEB_PORT}"))
+    if stop.wait(4):
+        return
+
+    while True:
+        screens = lcd.metric_screens(metrics_provider(), ip_address=ip_address, web_port=WEB_PORT)
+        for line1, line2 in screens:
+            run_lcd(lcd, lambda d: d.write_lines(line1, line2))
+            if stop.wait(LCD_SCREEN_SECONDS):
+                return
 
 
 def load_last_water_alert_time() -> float:
@@ -182,8 +206,16 @@ def main() -> None:
     lcd = init_lcd()
     ip_address = get_local_ip()
 
-    run_lcd(lcd, lambda d: d.show_message("Greenhouse Node", "Starting...", delay_seconds=2))
-    run_lcd(lcd, lambda d: d.show_ip_address(ip_address, port=WEB_PORT, delay_seconds=4))
+    lcd_stop = threading.Event()
+    lcd_thread = None
+    if lcd is not None:
+        lcd_thread = threading.Thread(target=run_lcd_display, args=(lcd, ip_address, lcd_stop), daemon=True)
+        lcd_thread.start()
+
+    def stop_lcd_thread() -> None:
+        lcd_stop.set()
+        if lcd_thread is not None:
+            lcd_thread.join(timeout=2)
 
     loop_count = 0
     last_soil_band = None
@@ -193,6 +225,7 @@ def main() -> None:
 
     try:
         while True:
+            cycle_start = time.monotonic()
             try:
                 metrics = collect_metrics()
                 LATEST_METRICS.update(metrics)
@@ -238,14 +271,6 @@ def main() -> None:
                 print(f"Soil Status    : {metrics['soil_moisture_band']}")
                 print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
 
-                run_lcd(lcd, lambda d: d.show_metrics(
-                    metrics,
-                    ip_address=ip_address,
-                    web_port=WEB_PORT,
-                    delay_seconds=2.5,
-                    include_ip=True,
-                ))
-
                 loop_count += 1
                 if loop_count % CHATTY_POST_EVERY_N_LOOPS == 0:
                     posted = post_to_chatty(metrics)
@@ -259,11 +284,15 @@ def main() -> None:
                 print("Error during monitoring loop; retrying next cycle.")
                 traceback.print_exc()
 
-            time.sleep(LOOP_SECONDS)
+            # Sleep only for what's left of the cycle so readings stay LOOP_SECONDS apart.
+            elapsed = time.monotonic() - cycle_start
+            time.sleep(max(0.0, LOOP_SECONDS - elapsed))
 
     except KeyboardInterrupt:
+        stop_lcd_thread()
         run_lcd(lcd, lambda d: d.show_message("Monitor stopped", "", delay_seconds=1.5))
     finally:
+        stop_lcd_thread()
         run_lcd(lcd, lambda d: d.clear())
         led_status.cleanup()
 

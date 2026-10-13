@@ -25,7 +25,7 @@ def append_metrics_csv(log_path: str | Path, metrics: Mapping[str, Any]) -> None
     file_exists = path.exists()
 
     row = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "timestamp": metrics.get("timestamp") or datetime.now().isoformat(timespec="seconds"),
         "air_temperature_c": metrics.get("air_temperature_c"),
         "air_temperature_f": metrics.get("air_temperature_f"),
         "air_humidity": metrics.get("air_humidity"),
