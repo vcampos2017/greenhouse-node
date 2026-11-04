@@ -345,6 +345,23 @@ This enables historical tracking of greenhouse conditions.
 
 ⸻
 
+Node Network (MQTT)
+
+The greenhouse node checks in with Chatty over MQTT, the same way the rain node does. mqtt_checkin.py runs inside main.py and posts to the broker on Chatty's Pi (chatty-node.local:1883):
+
+chatty/nodes/greenhouse/status   heartbeat every minute (retained), with a "last will" of {"state": "offline"}
+chatty/nodes/greenhouse/data     latest readings every minute and when the soil band changes (retained)
+
+If the node loses power or WiFi, or main.py stops, Chatty shows "Greenhouse node went quiet". Ask "Hey Chatty, which nodes are online?" to check.
+
+Install the library in the venv:
+
+pip install paho-mqtt
+
+Settings (environment variables): MQTT_HOST (default chatty-node.local), MQTT_PORT (default 1883), NODE_NAME (default greenhouse), GREENHOUSE_MQTT=0 to turn it off. If paho-mqtt is missing or the broker can't be reached, the rest of the node keeps running.
+
+⸻
+
 Chatty Integration (Optional)
 
 Set environment variables:
