@@ -15,6 +15,7 @@ from metric_logger import append_metrics_csv
 from chatty_talker import post_to_chatty
 from web_posting import create_app
 from lcd_display import LCDDisplay
+import mqtt_checkin
 
 
 # ---------- Configuration ----------
@@ -140,6 +141,9 @@ def main() -> None:
     led_status.set_green(True)
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
+
+    # Check in with Chatty over MQTT (heartbeat + readings). Safe if it fails.
+    mqtt_checkin.start(metrics_provider)
 
     lcd = LCDDisplay(address=0x27)
     ip_address = get_local_ip()
