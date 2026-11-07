@@ -400,6 +400,18 @@ Greenhouse Sensor Node Project
 
 ⸻
 
+WiFi keeper
+
+wifi_keeper.py keeps the greenhouse Pi on the best saved WiFi that really reaches the internet (the same keeper Chatty uses). Every minute it checks the internet; after two misses it tries the other saved networks, strongest first, and if none works it reconnects and, every few rounds, switches WiFi off and on. It also moves off a weak signal when a saved network is much stronger, leaves WiFi alone on a working cable, and turns WiFi power saving off. Works with NetworkManager (Bookworm/Trixie) and older wpa_supplicant setups, and never reads or prints passwords.
+
+bash install_wifi_keeper.sh            # once: installs node-wifi.service
+sudo python3 wifi_keeper.py --status   # saved networks and signals
+journalctl -u node-wifi -f             # what it is doing
+
+Settings (all optional) go in /etc/node-wifi.env; see the top of wifi_keeper.py. Tests: python3 tests/test_wifi_keeper.py
+
+⸻
+
 Related Projects
 
 This node is part of the broader Chatty Node ecosystem, a distributed network of lightweight environmental sensor nodes designed to explore monitoring, automation, and experimentation.
