@@ -18,10 +18,16 @@ This runs as a background thread inside main.py. If the MQTT library is
 missing or the broker can't be reached, the rest of the node (sensors,
 LCD, web dashboard, CSV log) carries on as before.
 
+Finding Chatty: broker_link.py tries her home address, chatty-node.local and
+her Tailscale address, learns which WiFi she's on from her `chatty/hub` note,
+and follows her when she moves. The heartbeat says how it reached her
+("via": "lan" or "tailscale", "chatty_wifi").
+
 Settings (environment variables):
     MQTT_HOST   broker address (default chatty-node.local, Chatty's Pi)
     MQTT_PORT   default 1883
     NODE_NAME   default "greenhouse"
+    MQTT_HOSTS, MQTT_TAILSCALE, MQTT_SCAN: see broker_link.py
     GREENHOUSE_MQTT=0   turn this off
 
 Needs paho-mqtt. In the greenhouse-env venv: pip install paho-mqtt
@@ -36,7 +42,6 @@ import time
 from typing import Any, Callable
 
 ENABLED = os.getenv("GREENHOUSE_MQTT", "1") != "0"
-HOST = os.getenv("MQTT_HOST", "chatty-node.local").strip()
 PORT = int(os.getenv("MQTT_PORT", "1883"))
 NAME = os.getenv("NODE_NAME", "greenhouse").strip() or "greenhouse"
 TITLE = "Greenhouse node"
@@ -49,9 +54,11 @@ DATA = f"chatty/nodes/{NAME}/data"
 MetricsProvider = Callable[[], dict]
 
 
-def status_payload(state: str = "online") -> str:
-    return json.dumps({"state": state, "every": EVERY, "ts": int(time.time()),
-                       "title": TITLE, "host": socket.gethostname()})
+def status_payload(state: str = "online", link_info: dict | None = None) -> str:
+    body = {"state": state, "every": EVERY, "ts": int(time.time()),
+            "title": TITLE, "host": socket.gethostname()}
+    body.update(link_info or {})
+    return json.dumps(body)
 
 
 def data_payload(metrics: dict[str, Any]) -> str | None:
@@ -68,12 +75,15 @@ class CheckIn:
         self.metrics_provider = metrics_provider
         self.client = None
         self.connected = False
+        self.link = None
 
     def _on_connect(self, client, userdata, flags, *rest):
         self.connected = True
-        print(f"Node network: connected to {HOST}:{PORT}", flush=True)
-        client.publish(STATUS, status_payload(), qos=1, retain=True)
+        client.publish(STATUS, status_payload(link_info=self._link_info()), qos=1, retain=True)
         self._publish_data()
+
+    def _link_info(self) -> dict:
+        return self.link.info() if self.link is not None else {}
 
     def _on_disconnect(self, *args):
         if self.connected:
@@ -98,7 +108,6 @@ class CheckIn:
         client.will_set(STATUS, json.dumps({"state": "offline"}), qos=1, retain=True)
         client.on_connect = self._on_connect
         client.on_disconnect = self._on_disconnect
-        client.reconnect_delay_set(min_delay=2, max_delay=60)
         return client
 
     def _loop(self) -> None:
@@ -113,7 +122,7 @@ class CheckIn:
             beat = now - last_beat >= EVERY
             if self.connected and (beat or band != last_band):
                 if beat:
-                    self.client.publish(STATUS, status_payload(), qos=1, retain=True)
+                    self.client.publish(STATUS, status_payload(link_info=self._link_info()), qos=1, retain=True)
                     last_beat = now
                 self._publish_data()
                 last_band = band
@@ -130,10 +139,12 @@ class CheckIn:
                   "run: pip install paho-mqtt)", flush=True)
             return False
         self.client = self._make_client(mqtt)
-        self.client.connect_async(HOST, PORT, keepalive=30)
-        self.client.loop_start()
+        import broker_link
+        self.link = broker_link.BrokerLink(self.client, port=PORT, keepalive=30)
+        self.link.start()
         threading.Thread(target=self._loop, daemon=True, name="mqtt-checkin").start()
-        print(f"Node network: checking in with {HOST}:{PORT} as '{NAME}'", flush=True)
+        print(f"Node network: looking for Chatty at {', '.join(self.link.candidates())} as '{NAME}'",
+              flush=True)
         return True
 
 

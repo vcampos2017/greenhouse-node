@@ -358,7 +358,9 @@ Install the library in the venv:
 
 pip install paho-mqtt
 
-Settings (environment variables): MQTT_HOST (default chatty-node.local), MQTT_PORT (default 1883), NODE_NAME (default greenhouse), GREENHOUSE_MQTT=0 to turn it off. If paho-mqtt is missing or the broker can't be reached, the rest of the node keeps running.
+Finding Chatty on any WiFi (broker_link.py): the node tries her home address, chatty-node.local, then her Tailscale address (100.69.130.79). It learns her addresses and which WiFi she's on from her retained chatty/hub note (kept in ~/.local/state/chatty-hub.json) and moves back to her home address when she answers there. The heartbeat says how it reached her ("via": "lan" or "tailscale").
+
+Settings (environment variables): MQTT_HOST (default chatty-node.local), MQTT_HOSTS (a full list to try instead), MQTT_TAILSCALE (default 100.69.130.79), MQTT_SCAN=0 (never knock around the home network), MQTT_PORT (default 1883), NODE_NAME (default greenhouse), GREENHOUSE_MQTT=0 to turn it off. If paho-mqtt is missing or the broker can't be reached, the rest of the node keeps running.
 
 ⸻
 
