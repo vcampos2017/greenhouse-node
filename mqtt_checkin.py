@@ -140,7 +140,7 @@ class CheckIn:
             return False
         self.client = self._make_client(mqtt)
         import broker_link
-        self.link = broker_link.BrokerLink(self.client, port=PORT, keepalive=30)
+        self.link = broker_link.BrokerLink(self.client, port=PORT, keepalive=60)
         self.link.start()
         threading.Thread(target=self._loop, daemon=True, name="mqtt-checkin").start()
         print(f"Node network: looking for Chatty at {', '.join(self.link.candidates())} as '{NAME}'",
