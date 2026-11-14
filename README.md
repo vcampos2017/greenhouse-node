@@ -402,6 +402,20 @@ Greenhouse Sensor Node Project
 
 ⸻
 
+Status at SSH login
+
+greenhouse_status.py prints a short summary when you log in, like the rain node: a GREENHOUSE banner with the Pi's name and address, the soil (dry / moderate / wet, percent and volts, or "probe unplugged?" at about 0 V), soil temperature, air temperature, humidity and pressure, how long ago the last reading was (red "readings stopped?" after 2 minutes), the services (greenhouse, node-wifi, tailscale, and whether the MQTT link to Chatty is up, over lan or tailscale), the WiFi network, signal and internet, and the Pi's temperature and uptime. It only reads the CSV log, systemctl, /run/node-wifi.json and `ss`, needs no venv, and changes nothing.
+
+python3 ~/projects/greenhouse-node/greenhouse_status.py
+
+To show it every time you log in over SSH, run this once:
+
+grep -q greenhouse_status ~/.bashrc || echo '[ -n "$SSH_CONNECTION" ] && python3 ~/projects/greenhouse-node/greenhouse_status.py' >> ~/.bashrc
+
+Tests: python3 tests/test_greenhouse_status.py
+
+⸻
+
 WiFi keeper
 
 wifi_keeper.py keeps the greenhouse Pi on the best saved WiFi that really reaches the internet (the same keeper Chatty uses). Every minute it checks the internet; after two misses it tries the other saved networks, strongest first, and if none works it reconnects and, every few rounds, switches WiFi off and on. It also moves off a weak signal when a saved network is much stronger, leaves WiFi alone on a working cable, and turns WiFi power saving off. As a last resort, after 30 minutes offline with the home router not answering either, it restarts the Pi (at most 3 times a day; never when only the internet is down). The installer also turns on the Pi's hardware watchdog, so a frozen Pi restarts itself after about 15 seconds, and keeps the system log across restarts. Each restart is noted with what the Pi saw just before in /var/lib/node-wifi/restarts.log (also shown by --status). Works with NetworkManager (Bookworm/Trixie) and older wpa_supplicant setups, and never reads or prints passwords.
