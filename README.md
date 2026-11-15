@@ -424,7 +424,7 @@ bash install_wifi_keeper.sh            # once: installs node-wifi.service
 sudo python3 wifi_keeper.py --status   # saved networks and signals
 journalctl -u node-wifi -f             # what it is doing
 
-Home WiFi: with NODE_WIFI_HOME=GF-Home in /etc/node-wifi.env, the node prefers the network Chatty and the other nodes are on. When it's on another network (like the AVC-2G extender) and home is in range at 30% or better (NODE_WIFI_HOME_MIN) for 3 checks, it moves home, at most every 15 minutes. If home has no internet it goes straight back and waits longer before the next try (30 minutes, doubling up to 4 hours). On home it only leaves for a stronger network when home drops below 30%, and when it's offline home is tried first. --status marks the home network.
+Home WiFi: with NODE_WIFI_HOME=HomeWiFi (your home network's name) in /etc/node-wifi.env, the node prefers the network Chatty and the other nodes are on. When it's on another network (like the extender WiFi) and home is in range at 30% or better (NODE_WIFI_HOME_MIN) for 3 checks, it moves home, at most every 15 minutes. If home has no internet it goes straight back and waits longer before the next try (30 minutes, doubling up to 4 hours). On home it only leaves for a stronger network when home drops below 30%, and when it's offline home is tried first. --status marks the home network.
 
 Settings (all optional) go in /etc/node-wifi.env; see the top of wifi_keeper.py. Tests: python3 tests/test_wifi_keeper.py
 
