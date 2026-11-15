@@ -74,7 +74,7 @@ def test_main_prints_banner_and_never_crashes():
     gs.LOG_PATH = p
     gs.latest_reading.__defaults__ = (p,)
     gs.service_state = lambda name: "active"
-    gs.mqtt_peer = lambda: "100.69.130.79"
+    gs.mqtt_peer = lambda: "100.64.0.10"
     gs.WIFI_STATUS = _log([])  # not JSON: falls back quietly
     out = io.StringIO()
     with redirect_stdout(out):
