@@ -14,6 +14,13 @@ drops off WiFi, loses power, or main.py stops, the broker posts
 {"state": "offline"} for it (the "last will"), and Chatty shows
 "Greenhouse node went quiet".
 
+A planned reboot, shutdown or `systemctl restart greenhouse` is different:
+node_goodbye.py posts a proper goodbye first ({"state": "offline", "clean":
+true, "reason": "reboot", ...}) and leaves without the last will, so Chatty
+waits quietly for the node to come back instead of saying it went quiet.
+`python3 node_goodbye.py away 180` before a long power-down asks her to wait
+3 hours.
+
 This runs as a background thread inside main.py. If the MQTT library is
 missing or the broker can't be reached, the rest of the node (sensors,
 LCD, web dashboard, CSV log) carries on as before.
@@ -128,6 +135,14 @@ class CheckIn:
                 last_band = band
             time.sleep(POLL)
 
+    def goodbye(self) -> bool:
+        """Shutting down or restarting properly: tell Chatty (no last will)."""
+        if self.client is None or self.link is None:
+            return False
+        import node_goodbye
+        return node_goodbye.leave(self.client, STATUS, node_goodbye.message(TITLE, EVERY),
+                                  link=self.link)
+
     def start(self) -> bool:
         if not ENABLED:
             print("Node network: off (GREENHOUSE_MQTT=0)", flush=True)
@@ -143,6 +158,8 @@ class CheckIn:
         self.link = broker_link.BrokerLink(self.client, port=PORT, keepalive=60)
         self.link.start()
         threading.Thread(target=self._loop, daemon=True, name="mqtt-checkin").start()
+        import node_goodbye
+        node_goodbye.on_stop(self.goodbye)   # SIGTERM: goodbye, then main.py's cleanup runs
         print(f"Node network: looking for Chatty at {', '.join(self.link.candidates())} as '{NAME}'",
               flush=True)
         return True
