@@ -352,7 +352,9 @@ The greenhouse node checks in with Chatty over MQTT, the same way the rain node 
 chatty/nodes/greenhouse/status   heartbeat every minute (retained), with a "last will" of {"state": "offline"}
 chatty/nodes/greenhouse/data     latest readings every minute and when the soil band changes (retained)
 
-If the node loses power or WiFi, or main.py stops, Chatty shows "Greenhouse node went quiet". Ask "Hey Chatty, which nodes are online?" to check.
+If the node loses power or WiFi, or main.py crashes, Chatty shows "Greenhouse node went quiet". Ask "Hey Chatty, which nodes are online?" to check.
+
+A planned reboot, shutdown or `sudo systemctl restart greenhouse` says goodbye instead (`node_goodbye.py`, the same file in every node's repo): a retained `{"state": "offline", "clean": true, "reason": "reboot", ...}` and a proper leave, so there is no last will. Chatty then waits quietly (10 minutes after a reboot, an hour after a power-down) and only says something if the node isn't back by then. Before a longer power-down, `python3 node_goodbye.py away 180` asks her to wait 3 hours. Once per Pi, `sudo python3 node_goodbye.py install greenhouse` makes the service stop before the network at shutdown, so the goodbye still gets out.
 
 Install the library in the venv:
 
