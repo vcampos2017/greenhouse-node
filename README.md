@@ -362,6 +362,15 @@ pip install paho-mqtt
 
 Finding Chatty on any WiFi (broker_link.py): the node tries her home address, chatty-node.local, then her Tailscale address (MQTT_TAILSCALE, or learned from her note). It learns her addresses and which WiFi she's on from her retained chatty/hub note (kept in ~/.local/state/chatty-hub.json) and moves back to her home address when she answers there. The heartbeat says how it reached her ("via": "lan" or "tailscale").
 
+It never stays stuck (2026-11-19, after the lightning node said "can't reach Chatty" for
+two days and a plain restart fixed it): each "can't reach Chatty" line says why the last
+try failed, and when the problem is on the node's side (the program ran out of open files,
+or a brand-new program reaches her board while this one hasn't for 15 minutes,
+`MQTT_RESTART_MINUTES`) it ends itself so systemd starts it fresh. Once per Pi,
+`sudo python3 broker_link.py install greenhouse` adds a systemd drop-in: always restart, and a
+watchdog that restarts the service if the link thread hangs. `python3 broker_link.py check`
+asks her board for a hello from a fresh program.
+
 Settings (environment variables): MQTT_HOST (default chatty-node.local), MQTT_HOSTS (a full list to try instead), MQTT_TAILSCALE (her Tailscale address; also learned from her chatty/hub note), MQTT_SCAN=0 (never knock around the home network), MQTT_PORT (default 1883), NODE_NAME (default greenhouse), GREENHOUSE_MQTT=0 to turn it off. If paho-mqtt is missing or the broker can't be reached, the rest of the node keeps running.
 
 ⸻
