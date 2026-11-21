@@ -40,6 +40,9 @@ FIELDNAMES = [
     "soil_temperature_c",
     "soil_temperature_f",
     "soil_moisture_band",
+    "co2_ppm",
+    "co2_temperature_f",
+    "co2_humidity",
 ]
 
 SERVICES = [("greenhouse", "greenhouse"), ("node-wifi", "wifi"), ("tailscaled", "tailscale")]
@@ -105,6 +108,9 @@ def latest_reading(path=LOG_PATH):
         return None
     if len(row) == len(FIELDNAMES):
         names = FIELDNAMES
+    elif len(row) < len(FIELDNAMES) and first_line(path) == ",".join(FIELDNAMES):
+        names = FIELDNAMES  # a row without the newest (CO2) columns
+        row = row + [""] * (len(FIELDNAMES) - len(row))
     else:  # an older log with a different set of columns: trust its header
         header = first_line(path)
         names = next(csv.reader([header]), []) if header else []
@@ -161,6 +167,29 @@ def air_line(row):
     if hpa is not None:
         bits.append(f"{hpa:.0f} hPa")
     return "   ".join(bits) or "no reading"
+
+
+def co2_line(row):
+    """CO2 from the SCD-40, or None when there's no sensor (older logs too)."""
+    ppm = num(row.get("co2_ppm"))
+    if ppm is None:
+        return None
+    low = float(os.getenv("CO2_LOW", "350"))
+    high = float(os.getenv("CO2_HIGH", "1500"))
+    if ppm < low:
+        word, color = "low, plants used it up", "33"
+    elif ppm > high:
+        word, color = "high, open a vent?", "31"
+    else:
+        word, color = "normal", "32"
+    bits = [paint(f"{ppm:.0f} ppm", color) + f" ({word})"]
+    f = num(row.get("co2_temperature_f"))
+    rh = num(row.get("co2_humidity"))
+    if f is not None:
+        bits.append(f"{f:.1f} F")
+    if rh is not None:
+        bits.append(f"{rh:.0f}% humidity")
+    return "   ".join(bits)
 
 
 def reading_age(row, now=None):
@@ -250,6 +279,9 @@ def main():
         if soil_f is not None:
             print(f"  Soil temp: {soil_f:.1f} F")
         print(f"  Air:       {air_line(row)}")
+        co2 = co2_line(row)
+        if co2:
+            print(f"  CO2:       {co2}")
         age, ts = reading_age(row)
         if age is not None:
             when = f"{ago(max(age, 0))} ({ts:%a %H:%M})"

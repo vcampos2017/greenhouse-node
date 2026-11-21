@@ -90,6 +90,14 @@ class LCDDisplay:
         )
         time.sleep(delay_seconds)
 
+        co2 = metrics.get("co2_ppm")
+        if co2 is not None:
+            self.write_lines(
+                f"CO2: {co2} ppm",
+                str(metrics.get("co2_band") or "").capitalize()
+            )
+            time.sleep(delay_seconds)
+
         if include_ip and ip_address:
             self.show_ip_address(ip_address, port=web_port, delay_seconds=delay_seconds)
 
