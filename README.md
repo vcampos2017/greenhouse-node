@@ -218,6 +218,7 @@ Expected devices:
 0x76  BME280
 0x48  ADS1115
 0x27  LCD backpack (optional)
+0x62  SCD-40 CO2 sensor (optional)
 
 ⸻
 
@@ -342,6 +343,22 @@ Environmental readings are stored in:
 greenhouse_log.csv
 
 This enables historical tracking of greenhouse conditions.
+
+⸻
+
+CO2 Sensor (SCD-40, optional)
+
+An Adafruit SCD-40 (STEMMA QT) adds CO2, plus its own temperature and humidity. co2_sensor.py reads it over the same I2C bus as the BME280 (address 0x62) with plain smbus2, so nothing new to install. main.py adds co2_ppm, co2_band (low / normal / high), co2_temperature_c, co2_temperature_f and co2_humidity to the readings, so they show on the dashboard (/, /history, /status, /metrics.json), the LCD, the SSH login screen, and go to Chatty over MQTT.
+
+The node keeps working without it: the CO2 values are simply missing, it looks for the sensor again every 5 minutes, and /health reports "co2_sensor": "missing" without calling the node degraded. The BME280's air pressure is passed to the sensor for a more accurate reading. Nothing is ever written to the sensor's memory.
+
+Wiring: a STEMMA QT to female-socket cable (or the I2C rows of the breadboard): red to 3.3V (pin 1), black to GND (pin 6), blue to SDA (pin 3, GPIO 2), yellow to SCL (pin 5, GPIO 3). Then i2cdetect -y 1 should list 62. Test it: python3 co2_sensor.py
+
+Bands: below 350 ppm "low" (the plants used up the CO2, open a vent), 350 to 1500 "normal" (outside air is about 420), above 1500 "high". Settings: SCD40=0 (off), SCD40_ADDRESS, SCD40_RETRY_SECONDS, CO2_LOW, CO2_HIGH.
+
+The sensor is rated for 0-95% humidity without condensation: keep it in the greenhouse air, out of the sealed box and out of drips. It also warms itself a little, so its temperature can read a degree or two above the BME280.
+
+The first start after this update moves the old greenhouse_log.csv aside (greenhouse_log-DATE.csv, nothing is deleted) because the log gained CO2 columns.
 
 ⸻
 

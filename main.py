@@ -11,6 +11,7 @@ from air_temperature import read_air_temperature_c, c_to_f
 from soil_temperature import read_soil_temperature_c
 from air_humidity import read_air_humidity, read_air_pressure_hpa
 from soil_moisture import read_soil_metrics
+from co2_sensor import read_co2_metrics
 from metric_logger import append_metrics_csv
 from chatty_talker import post_to_chatty
 from web_posting import create_app
@@ -47,6 +48,11 @@ LATEST_METRICS: dict[str, Any] = {
     "soil_moisture_percent": None,
     "soil_moisture_band": None,
     "soil_temperature_c": None,
+    "co2_ppm": None,             # SCD-40 (co2_sensor.py); stays None without one
+    "co2_band": None,
+    "co2_temperature_c": None,
+    "co2_temperature_f": None,
+    "co2_humidity": None,
 }
 
 
@@ -87,6 +93,8 @@ def collect_metrics() -> dict[str, Any]:
         "soil_temperature_c": round(soil_temp_c, 2) if soil_temp_c is not None else None,
         "soil_temperature_f": round(soil_temp_f, 2) if soil_temp_f is not None else None,
     }
+    # CO2 sensor: all None if it's missing; never stops the loop
+    metrics.update(read_co2_metrics(pressure_hpa=pressure))
     return metrics
 
 
@@ -205,6 +213,9 @@ def main() -> None:
             print(f"Soil Temp      : {metrics['soil_temperature_c']} C / {metrics['soil_temperature_f']} F")
             print(f"Soil Moisture  : {metrics['soil_moisture_percent']} %")
             print(f"Soil Status    : {metrics['soil_moisture_band']}")
+            if metrics.get("co2_ppm") is not None:
+                print(f"CO2            : {metrics['co2_ppm']} ppm ({metrics['co2_band']}), "
+                      f"{metrics['co2_temperature_f']} F, {metrics['co2_humidity']} %")
             print(f"Dashboard      : http://{ip_address}:{WEB_PORT}")
 
             lcd.show_metrics(

@@ -54,9 +54,25 @@ def _format_timestamp(value: str | None) -> str:
         return value
 
 
+def _co2_card(metrics: dict) -> str:
+    """The SCD-40 readings, or nothing when there's no CO2 sensor."""
+    ppm = metrics.get("co2_ppm")
+    if ppm is None:
+        return ""
+    words = {"low": "low (the plants used it up; open a vent?)",
+             "high": "high (stuffy; open a vent?)", "normal": "normal"}
+    band = words.get(str(metrics.get("co2_band")), metrics.get("co2_band") or "n/a")
+    return f"""
+            <div class="card">
+                <div class="reading"><span class="label">CO2:</span> {ppm} ppm, {band}</div>
+                <div class="reading"><span class="label">CO2 Sensor Temperature:</span> {metrics.get("co2_temperature_f", "n/a")} °F</div>
+                <div class="reading"><span class="label">CO2 Sensor Humidity:</span> {metrics.get("co2_humidity", "n/a")} %</div>
+            </div>"""
+
+
 def _build_history_rows(rows: list[dict]) -> str:
     if not rows:
-        return "<tr><td colspan='6'>No readings found for the last 24 hours.</td></tr>"
+        return "<tr><td colspan='7'>No readings found for the last 24 hours.</td></tr>"
 
     rendered: list[str] = []
     for row in reversed(rows[-200:]):
@@ -69,6 +85,7 @@ def _build_history_rows(rows: list[dict]) -> str:
                 <td>{row.get("soil_moisture_percent", "n/a")} %</td>
                 <td>{row.get("soil_temperature_f", "n/a")} °F</td>
                 <td>{row.get("soil_moisture_band", "n/a")}</td>
+                <td>{(row.get("co2_ppm") + " ppm") if row.get("co2_ppm") else "n/a"}</td>
             </tr>
             """
         )
@@ -182,6 +199,7 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
                 <div class="reading"><span class="label">Soil Temperature:</span> {metrics.get("soil_temperature_f", "n/a")} °F</div>
                 <div class="reading"><span class="label">Soil Status:</span> {metrics.get("soil_moisture_band", "n/a")}</div>
             </div>
+            {_co2_card(metrics)}
         </body>
         </html>
         """
@@ -273,6 +291,7 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
                             <th>Soil Moisture</th>
                             <th>Soil Temp</th>
                             <th>Soil Status</th>
+                            <th>CO2</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -329,12 +348,15 @@ def create_app(metrics_provider: MetricsProvider, log_path: str = "greenhouse_lo
             name for name in expected_metrics
             if metrics.get(name) is None
         ]
+        # The CO2 sensor is optional: report it, but its absence isn't "degraded"
+        co2_sensor = "ok" if metrics.get("co2_ppm") is not None else "missing"
         health_status = "ok" if not missing_metrics else "degraded"
         return jsonify({
             "node": "greenhouse-node",
             "status": health_status,
             "ok": health_status == "ok",
             "missing_metrics": missing_metrics,
+            "co2_sensor": co2_sensor,
             "metrics_available": sorted(metrics.keys()),
         })
 
